@@ -1,1 +1,18 @@
 https://webservices.bog.gov.sa/openDataApi/api/OpenData/get?FromDate=01/04/2023&ToDate=30/06/2023
+
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <tem:ExternalMoanStatisticService>
+         <!--Optional:-->
+         <tem:Username>BOGMOEANUSER</tem:Username>
+         <!--Optional:-->
+         <tem:Password>C@MPLEX#N</tem:Password>
+         <!--Optional:-->
+         <tem:FromDate>1/1/1000</tem:FromDate>
+         <!--Optional:-->
+         <tem:ToDatee>28/12/2023</tem:ToDatee>
+      </tem:ExternalMoanStatisticService>
+   </soapenv:Body>
+</soapenv:Envelope>
+
