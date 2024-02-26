@@ -1,0 +1,12 @@
+public interface IEncryptionService
+{
+    public string Encrypt(string plainText);
+
+    public string Decrypt(string cipherText);
+
+    public string Encrypt(object plainText);
+    public string Encrypt(string plainText, string key, string iv);
+
+    public string Decrypt(string cipherText, string key, string iv);
+
+}
