@@ -1,3 +1,28 @@
-2538484011
-*e4DKULSvZ#yZW&m
-Jqd40+LqyPNEDmzYaAG/s3LtFEq8ginNcZjDISPBKws=
+ string decrypted;
+ byte[] keys = Encoding.UTF8.GetBytes(key);
+
+ using (AesCryptoServiceProvider aes = new AesCryptoServiceProvider())
+ {
+     // Setting a key size disposes the previously-set key. 
+     // Setting a key size will generate a new key. 
+     // Setting a key size is redundant if a key going to be set after this statement. 
+     // aes.KeySize = 256; 
+
+     aes.Key = keys;
+     aes.Mode = CipherMode.CBC;
+     aes.Padding = PaddingMode.PKCS7;
+
+     using (MemoryStream msDecryptor = new MemoryStream(Convert.FromBase64String(cipherText)))
+     {
+         byte[] readIV = new byte[16];
+         msDecryptor.Read(readIV, 0, 16);
+         aes.IV = readIV;
+         ICryptoTransform decoder = aes.CreateDecryptor();
+         using (CryptoStream csDecryptor = new CryptoStream(msDecryptor, decoder, CryptoStreamMode.Read))
+         using (StreamReader srReader = new StreamReader(csDecryptor))
+         {
+             decrypted = srReader.ReadToEnd();
+         }
+     }
+ }
+ return decrypted;
