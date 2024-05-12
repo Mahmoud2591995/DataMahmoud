@@ -8,9 +8,6 @@ Key :HM6NR-QXX7C-DFW2Y-8B82K-WTYJV
 
 Visual Studio Enterprise 2015
 
-Key :2XNFG-KFHR8-QV3CP-3W6HT-683CH
-
-https://samainteg.bog.gov.sa/RPAccountValidationCallBack.svc
 - -First select from
 on
 SurveyAnswer.SurveyAnswerDesc,sum(cast( RelatedQuestionAnswers.SurveyAnswerDesc as bigint))
