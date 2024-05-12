@@ -11,3 +11,23 @@ Visual Studio Enterprise 2015
 Key :2XNFG-KFHR8-QV3CP-3W6HT-683CH
 
 https://samainteg.bog.gov.sa/RPAccountValidationCallBack.svc
+- -First select from
+on
+SurveyAnswer.SurveyAnswerDesc,sum(cast( RelatedQuestionAnswers.SurveyAnswerDesc as bigint))
+RelatedQuestionAnswers join SurveyAnswer
+SurveyAnswer.UserId = RelatedQuestionAnswers.UserId
+where SurveyAnswer QuesId=25 and RelatedQuestionAnswers QuesId =17
+and RelatedQuestionAnswers.SurveyAnswerDesc is not null and RelatedQuestionAnswers.SurveyAnswerDesc <>'null'
+group by SurveyAnswer. SurveyAnswerDesc
+order by sum(cast( RelatedQuestionAnswers.SurveyAnswerDesc as bigint)) desc
+- - Second
+select SurveyAnswer.SurveyAnswerDesc, sum(cast( RelatedQuestionAnswers.SurveyAnswerDesc as bigint))
+from
+RelatedQuestionAnswers join SurveyAnswer
+on
+SurveyAnswer.UserId = RelatedQuestionAnswers.UserId
+where
+SurveyAnswer QuesId=25 and RelatedQuestionAnswers.QuesId =16
+and RelatedQuestionAnswers.SurveyAnswerDesc is not null and RelatedQuestionAnswers.SurveyAnswerDesc <>'null'
+group by SurveyAnswer.SurveyAnswerDesc
+order by sum(cast( RelatedQuestionAnswers.SurveyAnswerDesc as bigint)) desc
