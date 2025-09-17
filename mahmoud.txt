@@ -1,63 +1,18 @@
- string GetFilterQueryString()
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
- {
+public static class QueryStringBuilder
+{
+    public static string Build(Dictionary<string, string> parameters)
+    {
+        if (parameters == null || parameters.Count == 0)
+            return string.Empty;
 
-   string filterQueryString = string.Empty;
+        var queryParams = parameters
+            .Where(p => !string.IsNullOrWhiteSpace(p.Key) && !string.IsNullOrWhiteSpace(p.Value))
+            .Select(p => $"{Uri.EscapeDataString(p.Key)}={Uri.EscapeDataString(p.Value)}");
 
-   if (getDeptEmpsDto.DepartmentId.HasValue && getDeptEmpsDto.DepartmentId != 0)
-
-   {
-
-     filterQueryString = filterQueryString + $"?DeptId={getDeptEmpsDto.DepartmentId}";
-
-   }
-
-   if (!string.IsNullOrEmpty(getDeptEmpsDto.FirstName))
-
-   {
-
-     filterQueryString = filterQueryString + $"&FirstName={getDeptEmpsDto.FirstName}";
-
-   }
-
-   if (!string.IsNullOrEmpty(getDeptEmpsDto.FathertName))
-
-   {
-
-     filterQueryString = filterQueryString + $"&FathertName={getDeptEmpsDto.FathertName}";
-
-   }
-
-   if (!string.IsNullOrEmpty(getDeptEmpsDto.FamilyName))
-
-   {
-
-     filterQueryString = filterQueryString + $"&FamilyName={getDeptEmpsDto.FamilyName}";
-
-   }
-
-   if (!string.IsNullOrEmpty(getDeptEmpsDto.GrandFathertName))
-
-   {
-
-     filterQueryString = filterQueryString + $"&GrandFathertName={getDeptEmpsDto.GrandFathertName}";
-
-   }
-
-
-
-   if (getDeptEmpsDto.AllDependantEmps.HasValue)
-
-   {
-
-     filterQueryString = filterQueryString + $"&AllDependantEmps={getDeptEmpsDto.AllDependantEmps.Value.ToString().ToLower()}";
-
-   }
-
-   return filterQueryString;
-
- }
-
-
-
-Use Safe Query Parameterization
+        return queryParams.Any() ? "?" + string.Join("&", queryParams) : string.Empty;
+    }
+}
