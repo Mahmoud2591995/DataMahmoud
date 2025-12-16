@@ -1,133 +1,31 @@
-// Clients/Generic/IHttpClientWrapper.cs
-public interface IHttpClientWrapper
-{
-    Task<TResponse> GetAsync<TResponse>(
-        string endpoint, 
-        Dictionary<string, string> headers = null);
-    
-    Task<TResponse> PostAsync<TRequest, TResponse>(
-        string endpoint, 
-        TRequest request,
-        Dictionary<string, string> headers = null);
-}
+BEGIN:VCALENDAR
+PRODID:-//BOG//Meeting System 1.0//EN
+VERSION:2.0
+CALSCALE:GREGORIAN
+METHOD:REQUEST
 
-// Clients/Generic/HttpClientWrapper.cs
-public class HttpClientWrapper : IHttpClientWrapper
-{
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<HttpClientWrapper> _logger;
+BEGIN:VTIMEZONE
+TZID:Asia/Riyadh
+X-LIC-LOCATION:Asia/Riyadh
+BEGIN:STANDARD
+TZOFFSETFROM:+0300
+TZOFFSETTO:+0300
+TZNAME:AST
+DTSTART:19700101T000000
+END:STANDARD
+END:VTIMEZONE
 
-    public HttpClientWrapper(
-        HttpClient httpClient, 
-        ILogger<HttpClientWrapper> logger)
-    {
-        _httpClient = httpClient;
-        _logger = logger;
-    }
-
-    public async Task<TResponse> GetAsync<TResponse>(
-        string endpoint, 
-        Dictionary<string, string> headers = null)
-    {
-        try
-        {
-            _logger.LogInformation("GET request to: {Endpoint}", endpoint);
-            
-            using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
-            AddHeaders(request, headers);
-            
-            var response = await _httpClient.SendAsync(request);
-            
-            return await HandleResponse<TResponse>(response);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in GET request to {Endpoint}", endpoint);
-            throw;
-        }
-    }
-
-    public async Task<TResponse> PostAsync<TRequest, TResponse>(
-        string endpoint, 
-        TRequest request,
-        Dictionary<string, string> headers = null)
-    {
-        try
-        {
-            _logger.LogInformation("POST request to: {Endpoint}", endpoint);
-            
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpoint);
-            httpRequest.Content = CreateJsonContent(request);
-            AddHeaders(httpRequest, headers);
-            
-            var response = await _httpClient.SendAsync(httpRequest);
-            
-            return await HandleResponse<TResponse>(response);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in POST request to {Endpoint}", endpoint);
-            throw;
-        }
-    }
-
-    private StringContent CreateJsonContent<T>(T data)
-    {
-        var json = JsonSerializer.Serialize(data);
-        return new StringContent(json, Encoding.UTF8, "application/json");
-    }
-
-    private void AddHeaders(HttpRequestMessage request, Dictionary<string, string> headers)
-    {
-        if (headers == null) return;
-
-        foreach (var header in headers)
-        {
-            request.Headers.TryAddWithoutValidation(header.Key, header.Value);
-        }
-    }
-
-    private async Task<TResponse> HandleResponse<TResponse>(HttpResponseMessage response)
-    {
-        var responseContent = await response.Content.ReadAsStringAsync();
-        
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogError(
-                "HTTP request failed. StatusCode: {StatusCode}, Response: {Response}", 
-                response.StatusCode, 
-                responseContent);
-            
-            throw new HttpClientException(
-                $"HTTP request failed with status code {response.StatusCode}", 
-                response.StatusCode, 
-                responseContent);
-        }
-
-        _logger.LogDebug("HTTP request successful. StatusCode: {StatusCode}", response.StatusCode);
-        
-        if (string.IsNullOrWhiteSpace(responseContent))
-        {
-            return default;
-        }
-
-        return JsonSerializer.Deserialize<TResponse>(responseContent, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        });
-    }
-}
-
-// Exceptions/HttpClientException.cs
-public class HttpClientException : Exception
-{
-    public HttpStatusCode StatusCode { get; }
-    public string ResponseContent { get; }
-
-    public HttpClientException(string message, HttpStatusCode statusCode, string responseContent) 
-        : base(message)
-    {
-        StatusCode = statusCode;
-        ResponseContent = responseContent;
-    }
-}
+BEGIN:VEVENT
+DTSTART;TZID=Asia/Riyadh:{START_DATETIME}
+DTEND;TZID=Asia/Riyadh:{END_DATETIME}
+DTSTAMP:{STAMP_UTC}
+ORGANIZER;CN={ORGANIZER_NAME}:mailto:{organizer_email}
+UID:{uid}
+{attendees}
+LOCATION:{meeting_room}
+SEQUENCE:{sequence}
+STATUS:CONFIRMED
+SUMMARY:{meeting_purpose}
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR
