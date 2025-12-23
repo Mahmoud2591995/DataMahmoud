@@ -1,31 +1,23 @@
-BEGIN:VCALENDAR
-PRODID:-//BOG//Meeting System 1.0//EN
-VERSION:2.0
-CALSCALE:GREGORIAN
-METHOD:REQUEST
+<input
+  type="text"
+  name="numberField"
+  [(ngModel)]="requestModel.NumberField"
+  #numberField="ngModel"
+  pattern="[0-9]{5,15}"
+  minlength="5"
+  maxlength="15"
+  required
+  class="form-control"
+  (input)="onNumberInput($event)"
+  [disabled]="currentPageMode === 3"
+/>
 
-BEGIN:VTIMEZONE
-TZID:Asia/Riyadh
-X-LIC-LOCATION:Asia/Riyadh
-BEGIN:STANDARD
-TZOFFSETFROM:+0300
-TZOFFSETTO:+0300
-TZNAME:AST
-DTSTART:19700101T000000
-END:STANDARD
-END:VTIMEZONE
-
-BEGIN:VEVENT
-DTSTART;TZID=Asia/Riyadh:{START_DATETIME}
-DTEND;TZID=Asia/Riyadh:{END_DATETIME}
-DTSTAMP:{STAMP_UTC}
-ORGANIZER;CN={ORGANIZER_NAME}:mailto:{organizer_email}
-UID:{uid}
-{attendees}
-LOCATION:{meeting_room}
-SEQUENCE:{sequence}
-STATUS:CONFIRMED
-SUMMARY:{meeting_purpose}
-TRANSP:OPAQUE
-END:VEVENT
-END:VCALENDAR
+<small class="text-danger" *ngIf="numberField.errors?.['minlength'] && numberField.touched">
+  Minimum 5 digits required
+</small>
+<small class="text-danger" *ngIf="numberField.errors?.['maxlength'] && numberField.touched">
+  Maximum 15 digits allowed
+</small>
+<small class="text-danger" *ngIf="numberField.errors?.['pattern'] && numberField.touched">
+  Only numbers allowed
+</small>
