@@ -1,28 +1,259 @@
-<input
-  type="text"
-  name="numberField"
-  [(ngModel)]="requestModel.NumberField"
-  #numberField="ngModel"
-  pattern="[0-9]{5,15}"
-  minlength="5"
-  maxlength="15"
-  required
-  class="form-control"
-  (input)="onNumberInput($event)"
-  [disabled]="currentPageMode === 3"
-/>
+using Microsoft.AspNetCore.Mvc;
 
-<small class="text-danger" *ngIf="numberField.errors?.['minlength'] && numberField.touched">
-  Minimum 5 digits required
-</small>
-<small class="text-danger" *ngIf="numberField.errors?.['maxlength'] && numberField.touched">
-  Maximum 15 digits allowed
-</small>
-<small class="text-danger" *ngIf="numberField.errors?.['pattern'] && numberField.touched">
-  Only numbers allowed
-</small>
+namespace WebApplication1.Controllers
+{
+    public class PdfConversionController : ControllerBase
+    {
+        [HttpPost("pdf-to-base64")]
+        [RequestSizeLimit(52428800)] // 50MB
+        public async Task<IActionResult> PdfToBase64(IFormFile pdf)
+        {
+            try
+            {
+                if (pdf == null || pdf.Length == 0)
+                {
+                    return BadRequest(new { error = "No PDF file uploaded" });
+                }
 
-onNumberInput(event: Event) {
-  const input = event.target as HTMLInputElement;
-  input.value = input.value.replace(/[^0-9]/g, '');
-}
+                // Validate file type
+                if (!pdf.ContentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
+                {
+                    return BadRequest(new { error = "File must be a PDF" });
+                }
+
+                // Read file into memory
+                using var memoryStream = new MemoryStream();
+                await pdf.CopyToAsync(memoryStream);
+                byte[] fileBytes = memoryStream.ToArray();
+
+                // Convert to Base64
+                string base64String = Convert.ToBase64String(fileBytes);
+
+                return Ok(new
+                {
+                    success = true,
+                    base64 = base64String,
+                    filename = pdf.FileName,
+                    size = pdf.Length
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Failed to convert PDF to Base64", details = ex.Message });
+            }
+        }
+
+        [HttpPost("base64-to-pdf")]
+        public IActionResult Base64ToPdf([FromBody] Base64Request request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.Base64))
+                {
+                    return BadRequest(new { error = "No base64 data provided" });
+                }
+
+                // Remove data URI prefix if present
+                string base64Data = request.Base64;
+                if (base64Data.Contains("base64,"))
+                {
+                    base64Data = base64Data.Split("base64,")[1];
+                }
+
+                // Convert Base64 to bytes
+                byte[] pdfBytes = Convert.FromBase64String(base64Data);
+
+                // Set filename
+                string filename = string.IsNullOrEmpty(request.Filename) ? "document.pdf" : request.Filename;
+
+                // Return PDF file
+                return File(pdfBytes, "application/pdf", filename);
+            }
+            catch (FormatException)
+            {
+                return BadRequest(new { error = "Invalid base64 string" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Failed to convert Base64 to PDF", details = ex.Message });
+            }
+        }
+
+        [HttpGet("health")]
+        public IActionResult Health()
+        {
+            return Ok(new
+            {
+                status = "ok",
+                message = "PDF conversion API is running",
+                timestamp = DateTime.UtcNow
+            });
+        }
+        [HttpPost("validate-base64")]
+        public IActionResult ValidateBase64([FromBody] ValidateRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.Base64))
+                {
+                    return Ok(new
+                    {
+                        isValid = false,
+                        errors = new[] { "Base64 string is null or empty" }
+                    });
+                }
+
+                var errors = new List<string>();
+                string base64Data = request.Base64;
+
+                // Remove data URI prefix if present
+                if (base64Data.Contains("base64,"))
+                {
+                    base64Data = base64Data.Split("base64,")[1];
+                }
+
+                // Check if string contains only valid Base64 characters
+                if (!System.Text.RegularExpressions.Regex.IsMatch(base64Data, @"^[a-zA-Z0-9\+/]*={0,3}$"))
+                {
+                    errors.Add("Contains invalid characters for Base64 encoding");
+                }
+
+                // Check length (must be multiple of 4)
+                if (base64Data.Length % 4 != 0)
+                {
+                    errors.Add("Length is not a multiple of 4");
+                }
+
+                // Try to decode
+                try
+                {
+                    byte[] data = Convert.FromBase64String(base64Data);
+
+                    // Check if it's a valid PDF (starts with %PDF-)
+                    if (data.Length < 5)
+                    {
+                        errors.Add("Decoded data is too short to be a valid PDF");
+                    }
+                    else
+                    {
+                        string header = System.Text.Encoding.ASCII.GetString(data, 0, Math.Min(5, data.Length));
+                        if (!header.StartsWith("%PDF-"))
+                        {
+                            errors.Add("Decoded data does not have a valid PDF header (should start with %PDF-)");
+                        }
+                    }
+                }
+                catch (FormatException ex)
+                {
+                    errors.Add($"Failed to decode Base64: {ex.Message}");
+                }
+
+                return Ok(new
+                {
+                    isValid = errors.Count == 0,
+                    errors = errors.Count > 0 ? errors.ToArray() : null,
+                    length = base64Data.Length,
+                    decodedSize = errors.Count == 0 ? Convert.FromBase64String(base64Data).Length : 0
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Validation failed", details = ex.Message });
+            }
+        }
+
+        [HttpPost("compare-base64")]
+        public IActionResult CompareBase64([FromBody] CompareRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.Base64_1) || string.IsNullOrEmpty(request.Base64_2))
+                {
+                    return BadRequest(new { error = "Both base64_1 and base64_2 must be provided" });
+                }
+
+                // Clean both Base64 strings
+                string base64Data1 = request.Base64_1;
+                string base64Data2 = request.Base64_2;
+
+                if (base64Data1.Contains("base64,"))
+                    base64Data1 = base64Data1.Split("base64,")[1];
+
+                if (base64Data2.Contains("base64,"))
+                    base64Data2 = base64Data2.Split("base64,")[1];
+
+                // Decode both
+                byte[] data1 = Convert.FromBase64String(base64Data1);
+                byte[] data2 = Convert.FromBase64String(base64Data2);
+
+                // Compare
+                bool areIdentical = data1.SequenceEqual(data2);
+
+                // Calculate similarity percentage
+                int matchingBytes = 0;
+                int maxLength = Math.Max(data1.Length, data2.Length);
+                int minLength = Math.Min(data1.Length, data2.Length);
+
+                for (int i = 0; i < minLength; i++)
+                {
+                    if (data1[i] == data2[i])
+                        matchingBytes++;
+                }
+
+                double similarityPercentage = maxLength > 0 ? (double)matchingBytes / maxLength * 100 : 0;
+
+                return Ok(new
+                {
+                    areIdentical,
+                    similarityPercentage = Math.Round(similarityPercentage, 2),
+                    details = new
+                    {
+                        base64_1_length = base64Data1.Length,
+                        base64_2_length = base64Data2.Length,
+                        decoded_1_size = data1.Length,
+                        decoded_2_size = data2.Length,
+                        sizeDifference = Math.Abs(data1.Length - data2.Length),
+                        matchingBytes
+                    }
+                });
+            }
+            catch (FormatException)
+            {
+                return BadRequest(new { error = "One or both Base64 strings are invalid" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Comparison failed", details = ex.Message });
+            }
+        }
+
+    }
+
+    // Request models
+    public class Base64Request
+    {
+        public string Base64 { get; set; } = string.Empty;
+        public string? Filename { get; set; }
+    }
+
+    public class ValidateRequest
+    {
+        public string Base64 { get; set; } = string.Empty;
+    }
+
+    public class CompareRequest
+    {
+        public string Base64_1 { get; set; } = string.Empty;
+        public string Base64_2 { get; set; } = string.Empty;
+    }
+
+    }
+
+    // Request model for Base64 to PDF
+    public class Base64Request
+    {
+        public string Base64 { get; set; } = string.Empty;
+        public string? Filename { get; set; }
+    }
+
+
