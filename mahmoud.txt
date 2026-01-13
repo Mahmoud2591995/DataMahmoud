@@ -1,84 +1,332 @@
-<nlog xmlns="http://www.nlog-project.org/schemas/NLog.xsd"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Logging;
 
-	<targets>
-		<!-- Existing Database Target -->
-		<target name="database" xsi:type="Database">
-			<commandText>
-				insert into dbo.ErrorLog (
-				ExceptionType, ExceptionMessage, ExceptionSource, ExceptionStacktrace,
-				Host, IP, Browser, UserID, UserType, PageName, ErrorDate
-				)
-				values (
-				@ExceptionType, @ExceptionMessage, @ExceptionSource, @ExceptionStacktrace,
-				@Host, @IP, @Browser, @UserID, @UserType, @PageName, GETDATE()
-				);
-			</commandText>
+namespace SecureCaching
+{
+    public class CacheKeyBuilder
+    {
+        private const int MAX_KEY_LENGTH = 200;
+        private const int MAX_CACHE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+        private static readonly Regex SanitizeRegex = new Regex(@"[^a-zA-Z0-9_\-:]", RegexOptions.Compiled);
+        
+        private readonly ILogger<CacheKeyBuilder> _logger;
+        private readonly HashSet<string> _allowedParams;
 
-			<parameter name="@ExceptionType" layout="${exception:format=Type}" />
-			<parameter name="@ExceptionMessage" layout="${exception:format=Message}" />
-			<parameter name="@ExceptionSource" layout="${exception:format=Source}" />
-			<parameter name="@ExceptionStacktrace" layout="${exception:format=StackTrace}" />
-			<parameter name="@Host" layout="${machinename}" />
-			<parameter name="@PageName" layout="${event-properties:item=PageName}" />
-			<parameter name="@IP" layout="${event-properties:item=IP}" />
-			<parameter name="@Browser" layout="${event-properties:item=Browser}" />
-			<parameter name="@UserID" layout="${event-properties:item=UserID}" />
-			<parameter name="@UserType" layout="${event-properties:item=UserType}" />
+        public CacheKeyBuilder(ILogger<CacheKeyBuilder> logger, IEnumerable<string> allowedParams = null)
+        {
+            _logger = logger;
+            _allowedParams = allowedParams?.ToHashSet(StringComparer.OrdinalIgnoreCase) 
+                ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    "page", "pageSize", "sortBy", "orderBy", "filter", "search"
+                };
+        }
 
-			<dbProvider>System.Data.SqlClient</dbProvider>
-		</target>
+        public string BuildCacheKey(string controller, string action, string userId, 
+            IDictionary<string, string> queryParams, string customNamespace = null)
+        {
+            if (string.IsNullOrWhiteSpace(controller) || string.IsNullOrWhiteSpace(action))
+                throw new ArgumentException("Controller and Action are required");
 
-		<!-- File Target - Simple Format -->
-		<target name="logfile" xsi:type="File"
-		        fileName="${basedir}/Logs/${shortdate}.log"
-		        layout="${longdate}|${level:uppercase=true}|${logger}|${message}|${exception:format=tostring}" />
+            // Sanitize inputs
+            var cleanController = SanitizeComponent(controller);
+            var cleanAction = SanitizeComponent(action);
+            var cleanUserId = SanitizeComponent(userId ?? "anonymous");
+            var cleanNamespace = string.IsNullOrWhiteSpace(customNamespace) 
+                ? "" 
+                : $"{SanitizeComponent(customNamespace)}:";
 
-		<!-- File Target - Detailed Format (Recommended) -->
-		<target name="detailedfile" xsi:type="File"
-		        fileName="${basedir}/Logs/${shortdate}_detailed.log"
-		        archiveFileName="${basedir}/Logs/Archive/${shortdate}.{#}.log"
-		        archiveEvery="Day"
-		        archiveNumbering="Rolling"
-		        maxArchiveFiles="30"
-		        concurrentWrites="true"
-		        keepFileOpen="false">
-			<layout xsi:type="JsonLayout">
-				<attribute name="time" layout="${longdate}" />
-				<attribute name="level" layout="${level:upperCase=true}"/>
-				<attribute name="message" layout="${message}" />
-				<attribute name="exception" layout="${exception:format=tostring}" />
-				<attribute name="exceptionType" layout="${exception:format=Type}" />
-				<attribute name="exceptionMessage" layout="${exception:format=Message}" />
-				<attribute name="stackTrace" layout="${exception:format=StackTrace}" />
-				<attribute name="host" layout="${machinename}" />
-				<attribute name="pageName" layout="${event-properties:item=PageName}" />
-				<attribute name="ip" layout="${event-properties:item=IP}" />
-				<attribute name="browser" layout="${event-properties:item=Browser}" />
-				<attribute name="userId" layout="${event-properties:item=UserID}" />
-				<attribute name="userType" layout="${event-properties:item=UserType}" />
-				<attribute name="logger" layout="${logger}"/>
-			</layout>
-		</target>
+            // Filter and hash query parameters
+            var hashedQuery = HashQueryParameters(queryParams);
 
-		<!-- File Target - Error Only (Separate File) -->
-		<target name="errorfile" xsi:type="File"
-		        fileName="${basedir}/Logs/Errors/${shortdate}_errors.log"
-		        layout="${longdate} | ${level:uppercase=true} | ${machinename} | ${message} ${newline}Exception: ${exception:format=tostring}${newline}PageName: ${event-properties:item=PageName}${newline}UserID: ${event-properties:item=UserID}${newline}IP: ${event-properties:item=IP}${newline}Browser: ${event-properties:item=Browser}${newline}---${newline}" />
+            // Build key with namespace segmentation
+            var cacheKey = $"{cleanNamespace}{cleanController}:{cleanAction}:{cleanUserId}:{hashedQuery}";
 
-	</targets>
+            // Enforce length limit
+            if (cacheKey.Length > MAX_KEY_LENGTH)
+            {
+                cacheKey = $"{cleanNamespace}{cleanController}:{cleanAction}:{ComputeSHA256Hash(cacheKey)}";
+            }
 
-	<rules>
-		<!-- Log errors to database -->
-		<logger name="*" minlevel="Error" writeTo="database" />
-		
-		<!-- Log errors to file -->
-		<logger name="*" minlevel="Error" writeTo="errorfile" />
-		
-		<!-- Log all levels to detailed file (optional) -->
-		<logger name="*" minlevel="Info" writeTo="detailedfile" />
-		
-		<!-- Or just log everything to simple file -->
-		<!-- <logger name="*" minlevel="Trace" writeTo="logfile" /> -->
-	</rules>
-</nlog>
+            _logger.LogDebug("Generated cache key: {CacheKey}", cacheKey);
+            return cacheKey;
+        }
+
+        private string SanitizeComponent(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+                return "default";
+
+            // Remove special characters, keep only alphanumeric, underscore, hyphen, colon
+            var sanitized = SanitizeRegex.Replace(input, "");
+            
+            // Limit length
+            return sanitized.Length > 50 ? sanitized.Substring(0, 50) : sanitized;
+        }
+
+        private string HashQueryParameters(IDictionary<string, string> queryParams)
+        {
+            if (queryParams == null || !queryParams.Any())
+                return "noparams";
+
+            // Filter to allowed parameters only
+            var allowedParams = queryParams
+                .Where(kv => _allowedParams.Contains(kv.Key))
+                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!allowedParams.Any())
+                return "noparams";
+
+            // Build sorted query string
+            var queryString = string.Join("&", 
+                allowedParams.Select(kv => $"{kv.Key}={kv.Value}"));
+
+            // Hash the query string
+            return ComputeSHA256Hash(queryString);
+        }
+
+        private string ComputeSHA256Hash(string input)
+        {
+            using (var sha256 = SHA256.Create())
+            {
+                var bytes = Encoding.UTF8.GetBytes(input);
+                var hash = sha256.ComputeHash(bytes);
+                return Convert.ToHexString(hash).Substring(0, 16).ToLowerInvariant();
+            }
+        }
+
+        public bool ValidateResponseSize(byte[] data)
+        {
+            if (data == null)
+                return false;
+
+            var isValid = data.Length <= MAX_CACHE_SIZE_BYTES;
+            
+            if (!isValid)
+            {
+                _logger.LogWarning("Response size {Size} bytes exceeds maximum cache size", data.Length);
+            }
+
+            return isValid;
+        }
+    }
+
+    public class SecureCacheService
+    {
+        private readonly IDistributedCache _cache;
+        private readonly CacheKeyBuilder _keyBuilder;
+        private readonly ILogger<SecureCacheService> _logger;
+        private readonly HashSet<string> _sensitiveOperations;
+
+        public SecureCacheService(
+            IDistributedCache cache, 
+            CacheKeyBuilder keyBuilder,
+            ILogger<SecureCacheService> logger)
+        {
+            _cache = cache;
+            _keyBuilder = keyBuilder;
+            _logger = logger;
+            
+            // Operations that should bypass cache
+            _sensitiveOperations = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "payment", "checkout", "login", "logout", "password", "profile-edit"
+            };
+        }
+
+        public async Task<byte[]> GetAsync(string controller, string action, 
+            string userId, IDictionary<string, string> queryParams, 
+            HttpContext httpContext = null)
+        {
+            // Check cache-bypass headers
+            if (ShouldBypassCache(action, httpContext))
+            {
+                _logger.LogInformation("Cache bypassed for {Controller}.{Action}", controller, action);
+                return null;
+            }
+
+            try
+            {
+                var cacheKey = _keyBuilder.BuildCacheKey(controller, action, userId, 
+                    queryParams, GetNamespace(controller));
+                
+                var cachedData = await _cache.GetAsync(cacheKey);
+                
+                if (cachedData != null)
+                {
+                    _logger.LogInformation("Cache hit: {CacheKey}", cacheKey);
+                }
+                
+                return cachedData;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Cache retrieval failed for {Controller}.{Action}", controller, action);
+                return null;
+            }
+        }
+
+        public async Task SetAsync(string controller, string action, string userId, 
+            IDictionary<string, string> queryParams, byte[] data, 
+            TimeSpan? expiration = null, HttpContext httpContext = null)
+        {
+            // Don't cache sensitive operations
+            if (ShouldBypassCache(action, httpContext))
+            {
+                return;
+            }
+
+            // Validate response size
+            if (!_keyBuilder.ValidateResponseSize(data))
+            {
+                _logger.LogWarning("Response too large to cache for {Controller}.{Action}", controller, action);
+                return;
+            }
+
+            try
+            {
+                var cacheKey = _keyBuilder.BuildCacheKey(controller, action, userId, 
+                    queryParams, GetNamespace(controller));
+                
+                var options = new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = expiration ?? TimeSpan.FromMinutes(15)
+                };
+
+                await _cache.SetAsync(cacheKey, data, options);
+                _logger.LogInformation("Cache set: {CacheKey}, Size: {Size} bytes", cacheKey, data.Length);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Cache write failed for {Controller}.{Action}", controller, action);
+            }
+        }
+
+        private bool ShouldBypassCache(string action, HttpContext httpContext)
+        {
+            // Check if action is in sensitive operations list
+            if (_sensitiveOperations.Contains(action))
+                return true;
+
+            // Check for cache bypass headers
+            if (httpContext != null)
+            {
+                if (httpContext.Request.Headers.ContainsKey("Cache-Control"))
+                {
+                    var cacheControl = httpContext.Request.Headers["Cache-Control"].ToString();
+                    if (cacheControl.Contains("no-cache", StringComparison.OrdinalIgnoreCase) ||
+                        cacheControl.Contains("no-store", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+
+                if (httpContext.Request.Headers.ContainsKey("Pragma"))
+                {
+                    var pragma = httpContext.Request.Headers["Pragma"].ToString();
+                    if (pragma.Contains("no-cache", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private string GetNamespace(string controller)
+        {
+            // Separate cache namespaces per controller
+            return $"ns-{SanitizeNamespace(controller)}";
+        }
+
+        private string SanitizeNamespace(string input)
+        {
+            return Regex.Replace(input ?? "", @"[^a-zA-Z0-9]", "").ToLowerInvariant();
+        }
+    }
+
+    // Cache monitoring service
+    public class CacheMonitor
+    {
+        private readonly ILogger<CacheMonitor> _logger;
+        private readonly Dictionary<string, CacheMetrics> _metrics = new();
+
+        public CacheMonitor(ILogger<CacheMonitor> logger)
+        {
+            _logger = logger;
+        }
+
+        public void RecordHit(string cacheKey)
+        {
+            var pattern = ExtractPattern(cacheKey);
+            UpdateMetrics(pattern, true);
+        }
+
+        public void RecordMiss(string cacheKey)
+        {
+            var pattern = ExtractPattern(cacheKey);
+            UpdateMetrics(pattern, false);
+        }
+
+        private void UpdateMetrics(string pattern, bool isHit)
+        {
+            lock (_metrics)
+            {
+                if (!_metrics.ContainsKey(pattern))
+                {
+                    _metrics[pattern] = new CacheMetrics();
+                }
+
+                var metric = _metrics[pattern];
+                metric.TotalRequests++;
+                
+                if (isHit)
+                {
+                    metric.Hits++;
+                }
+
+                // Log anomalies
+                if (metric.TotalRequests > 100)
+                {
+                    var hitRate = (double)metric.Hits / metric.TotalRequests;
+                    if (hitRate < 0.1)
+                    {
+                        _logger.LogWarning("Low cache hit rate ({HitRate:P2}) for pattern: {Pattern}", 
+                            hitRate, pattern);
+                    }
+                }
+            }
+        }
+
+        private string ExtractPattern(string cacheKey)
+        {
+            // Extract pattern without user ID and hash
+            var parts = cacheKey.Split(':');
+            return parts.Length >= 2 ? $"{parts[0]}:{parts[1]}" : cacheKey;
+        }
+
+        public Dictionary<string, CacheMetrics> GetMetrics()
+        {
+            lock (_metrics)
+            {
+                return new Dictionary<string, CacheMetrics>(_metrics);
+            }
+        }
+    }
+
+    public class CacheMetrics
+    {
+        public long TotalRequests { get; set; }
+        public long Hits { get; set; }
+        public double HitRate => TotalRequests > 0 ? (double)Hits / TotalRequests : 0;
+    }
+}
