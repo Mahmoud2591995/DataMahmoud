@@ -1,24 +1,62 @@
--- Insert email logs for affected trainees
-        INSERT INTO [dbo].[EmailLog] 
-        (
-            [ToEmail],
-            [Subject],
-            [Body],
-            [IsSent],
-            [CreatedDate],
-            [SentDate]
-        )
-        SELECT 
-            t.Email AS ToEmail,
-            ts.EmailSubject AS Subject,
-            REPLACE(ts.EmailBody, N'اسم المتدرب', t.TraineeName) AS Body,
-            0 AS IsSent,
-            GETDATE() AS CreatedDate,
-            NULL AS SentDate
-        FROM [dbo].[TraineeInfoPerRequest] req
-        INNER JOIN inserted Ins ON req.TrainingPeriodId = Ins.TrainingPeriodId
-        INNER JOIN [dbo].[Trainee] t ON req.TraineeId = t.TraineeId
-        CROSS JOIN [dbo].[TraineeSettings] ts
-        WHERE req.RequestStatusId = 9
-        AND t.Email IS NOT NULL
-        AND ts.EmailBody IS NOT NULL
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إشعار طلب التدريب</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f4;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f4; padding: 20px 0;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%); padding: 40px 30px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">ديوان المظالم</h1>
+                            <p style="color: #e0e7ef; margin: 10px 0 0 0; font-size: 14px;">إشعار بخصوص طلب التدريب التعاوني</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Body -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <p style="color: #2d3748; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
+                                عزيزي المتدرب / <strong style="color: #1e3a5f;">#اسم_المتدرب</strong>
+                            </p>
+                            
+                            <p style="color: #4a5568; font-size: 16px; line-height: 1.8; margin: 0 0 20px 0;">
+                                نشكر لكم اهتمامكم للحصول على فرصة التدريب التعاوني في ديوان المظالم.
+                            </p>
+                            
+                            <div style="background-color: #fff5f5; border-right: 4px solid #fc8181; padding: 20px; margin: 25px 0; border-radius: 4px;">
+                                <p style="color: #742a2a; font-size: 16px; line-height: 1.8; margin: 0;">
+                                    نود إبلاغكم بأن المقاعد المتاحة قد اكتملت، لذا تعذر قبول طلبكم في هذه المرحلة.
+                                </p>
+                            </div>
+                            
+                            <p style="color: #4a5568; font-size: 16px; line-height: 1.8; margin: 0;">
+                                نقدر اهتمامكم ونتمنى لكم التوفيق.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f7fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+                            <p style="color: #718096; font-size: 14px; margin: 0 0 10px 0;">
+                                ديوان المظالم - المملكة العربية السعودية
+                            </p>
+                            <p style="color: #a0aec0; font-size: 12px; margin: 0;">
+                                هذه رسالة آلية، يرجى عدم الرد عليها
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
